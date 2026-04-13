@@ -1,0 +1,517 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>HR Process Tracker</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#f5f5f3;color:#1a1a1a;padding:24px}
+h1{font-size:20px;font-weight:500;margin-bottom:16px;color:#1a1a1a}
+.metrics{display:grid;grid-template-columns:repeat(5,1fr);gap:10px;margin-bottom:20px}
+.metric{background:#ebebeb;border-radius:8px;padding:12px 14px}
+.metric-label{font-size:12px;color:#666;margin-bottom:5px}
+.metric-value{font-size:22px;font-weight:500;color:#1a1a1a}
+.metric-sub{font-size:11px;color:#999;margin-top:2px}
+.card{background:#fff;border:0.5px solid #ddd;border-radius:12px;padding:16px 20px;margin-bottom:14px}
+.card-title{font-size:13px;font-weight:500;color:#1a1a1a;margin-bottom:12px}
+.legend{display:flex;flex-wrap:wrap;gap:12px;margin-bottom:10px;font-size:11px;color:#666}
+.legend span{display:flex;align-items:center;gap:4px}
+.legend i{width:10px;height:10px;border-radius:2px;display:inline-block;flex-shrink:0}
+.table-outer{width:100%;overflow-x:auto;background:#fff;border-radius:12px;border:0.5px solid #ddd}
+table{width:100%;border-collapse:collapse;font-size:9px;min-width:1020px;table-layout:fixed}
+col.c-req{width:70px}col.c-pos{width:130px}col.c-mgr{width:100px}col.c-type{width:82px}
+col.c-date{width:108px}col.c-days{width:48px}col.c-name{width:110px}col.c-del{width:26px}
+thead tr{background:#f5f5f3}
+th{padding:5px 8px;text-align:left;font-weight:500;color:#666;font-size:9px;border-bottom:1px solid #ccc;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+th.grp{text-align:center;color:#185FA5;letter-spacing:.04em}
+tbody tr{border-bottom:0.5px solid #e8e8e8}
+tbody tr:last-child{border-bottom:none}
+tbody tr:hover td{background:#fafafa}
+td{padding:3px 8px;color:#1a1a1a;vertical-align:middle;border:none}
+.cell-input{background:transparent;border:none;font-size:9px;font-family:inherit;color:#1a1a1a;width:100%;padding:0}
+.cell-input:focus{outline:none}
+.date-input{background:transparent;border:none;font-size:9px;font-family:inherit;color:#666;width:100px;padding:0;cursor:pointer}
+.date-input:focus{outline:none;color:#1a1a1a}
+.type-select{background:transparent;border:none;font-size:9px;font-family:inherit;color:#1a1a1a;width:100%;padding:0;cursor:pointer}
+.type-select:focus{outline:none}
+.badge{display:inline-block;font-size:9px;padding:1px 6px;border-radius:99px}
+.badge-green{background:#d4edda;color:#276c3a}
+.badge-amber{background:#fff3cd;color:#856404}
+.badge-gray{background:#ebebeb;color:#666}
+.del-btn{background:none;border:none;cursor:pointer;color:#aaa;padding:1px 3px;border-radius:4px;font-size:11px;line-height:1}
+.del-btn:hover{background:#fde8e8;color:#c0392b}
+.toolbar{display:flex;justify-content:space-between;align-items:center;margin-bottom:6px}
+.toolbar-title{font-size:14px;font-weight:500;color:#1a1a1a}
+.toolbar-right{display:flex;gap:8px;align-items:center}
+.toolbar-btn{font-size:12px;padding:5px 12px;border-radius:8px;border:0.5px solid #ccc;background:#fff;color:#1a1a1a;cursor:pointer}
+.toolbar-btn:hover{background:#f0f0f0}
+.add-btn{font-size:12px;padding:5px 12px;border-radius:8px;border:0.5px solid #aac8ef;background:#e6f1fb;color:#185FA5;cursor:pointer}
+.add-btn:hover{opacity:.85}
+.hint{font-size:10px;color:#999;margin-bottom:8px;line-height:1.5}
+.hint code{font-family:monospace;font-size:10px}
+.toast{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:#fff;border:0.5px solid #ccc;border-radius:8px;padding:8px 16px;font-size:12px;color:#1a1a1a;box-shadow:0 2px 8px rgba(0,0,0,.12);opacity:0;transition:opacity .3s;pointer-events:none;z-index:999}
+.toast.show{opacity:1}
+.sync-status{font-size:11px;color:#999;display:flex;align-items:center;gap:6px}
+.sync-dot{width:7px;height:7px;border-radius:50%;background:#ccc;display:inline-block}
+.sync-dot.saving{background:#EF9F27}
+.sync-dot.saved{background:#639922}
+.sync-dot.error{background:#E24B4A}
+.loading{text-align:center;padding:24px;color:#999;font-size:13px}
+</style>
+</head>
+<body>
+
+<h1>HR process tracker</h1>
+
+<div class="metrics" id="metrics"></div>
+
+<div class="card">
+  <div class="card-title">Days per hire — milestone breakdown by role type</div>
+  <div class="legend" id="bar-legend"></div>
+  <div id="chart-wrap" style="position:relative;width:100%"><canvas id="chartBar"></canvas></div>
+</div>
+
+<div class="card">
+  <div class="card-title">Pipeline stage summary</div>
+  <div id="pipeline" style="margin-top:4px"></div>
+</div>
+
+<div class="toolbar">
+  <span class="toolbar-title">Position tracker</span>
+  <div class="toolbar-right">
+    <div class="sync-status"><span class="sync-dot" id="sync-dot"></span><span id="sync-label">Loading…</span></div>
+    <button class="toolbar-btn" onclick="document.getElementById('fileInput').click()">Import txt / csv</button>
+    <input id="fileInput" type="file" accept=".txt,.csv" style="display:none" onchange="importFile(event)"/>
+    <button class="add-btn" onclick="addRow()">+ Add position</button>
+  </div>
+</div>
+
+<p class="hint">Import format (tab or comma separated, dates as YYYY-MM-DD):<br>
+<code>ReqID | Position | Hiring Manager | Role Type | Need Identified | Req Submitted | Req Approved | Candidate Identified | Interviewed | Offer Extended | Fully Onboarded | Candidate Name</code></p>
+
+<div class="table-outer">
+  <table>
+    <colgroup>
+      <col class="c-req"><col class="c-pos"><col class="c-mgr"><col class="c-type">
+      <col class="c-date"><col class="c-date"><col class="c-date">
+      <col class="c-date"><col class="c-date"><col class="c-date"><col class="c-date">
+      <col class="c-days"><col class="c-name"><col class="c-del">
+    </colgroup>
+    <thead>
+      <tr>
+        <th rowspan="2">Req ID</th>
+        <th rowspan="2">Position</th>
+        <th rowspan="2">Hiring manager</th>
+        <th rowspan="2">Role type</th>
+        <th class="grp" colspan="7">Milestone dates</th>
+        <th rowspan="2" style="text-align:center">Days</th>
+        <th rowspan="2">Candidate name</th>
+        <th rowspan="2"></th>
+      </tr>
+      <tr>
+        <th>Need identified</th><th>Req submitted</th><th>Req approved</th>
+        <th>Candidate ID'd</th><th>Interviewed</th><th>Offer extended</th><th>Onboarded</th>
+      </tr>
+    </thead>
+    <tbody id="tbody"><tr><td colspan="14" class="loading">Loading from SharePoint…</td></tr></tbody>
+  </table>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+// ── SharePoint config ─────────────────────────────────
+const SP_SITE    = 'https://osaic.sharepoint.com/sites/Dept-ETS/ETSApplications';
+const SP_LIST    = 'HR Process Tracker';
+const SP_API     = `${SP_SITE}/_api/web/lists/getbytitle('${encodeURIComponent(SP_LIST)}')/items`;
+const SP_HEADERS = {'Accept':'application/json;odata=verbose','Content-Type':'application/json;odata=verbose'};
+
+// SharePoint internal field names — verified from API response
+const FIELDS = {
+  reqId:     'ReqID',
+  position:  'Position',
+  manager:   'HiringManager',
+  type:      'RoleType',
+  dates: [
+    'Date_x002d_NeedIdentified',
+    'Date_x002d_ReqSubmitted',
+    'Date_x002d_ReqApproved',
+    'DateCandidateIdentified',
+    'DateCandidateInterviewed',
+    'OfferExtended',
+    'FullyOnboarded'
+  ],
+  candidate: 'Title'   // SharePoint Title column = Candidate Name
+};
+
+// ── Constants ─────────────────────────────────────────
+const MS_LABELS=['Need identified','Req submitted','Req approved','Candidate identified','Candidate interviewed','Offer extended','Candidate onboarded'];
+const SEG_LABELS=['Need→Req','Req→Approved','Approved→Candidate','Candidate→Interview','Interview→Offer','Offer→Onboard'];
+const SEG_COLORS=['#185FA5','#378ADD','#85B7EB','#1D9E75','#5DCAA5','#EF9F27'];
+const FULL_BAR_COLOR='#B0BEC5';
+const STAGE_COLORS=['#B5D4F4','#85B7EB','#378ADD','#185FA5','#5DCAA5','#EF9F27','#639922'];
+const ROLE_TYPES=['FTE','Con-Mphasis','Con-Other'];
+const TYPE_HDR_COLORS=['#185FA5','#0F6E56','#854F0B'];
+
+let rows=[], barChart=null, saveTimer=null;
+
+// ── Sync UI ───────────────────────────────────────────
+function setSyncStatus(state,label){
+  document.getElementById('sync-dot').className='sync-dot '+state;
+  document.getElementById('sync-label').textContent=label;
+}
+
+// ── Toast ─────────────────────────────────────────────
+function showToast(msg,isErr){
+  const t=document.getElementById('toast');
+  t.textContent=msg;t.style.color=isErr?'#c0392b':'#276c3a';
+  t.style.borderColor=isErr?'#f5c6cb':'#c3e6cb';
+  t.classList.add('show');setTimeout(()=>t.classList.remove('show'),4000);
+}
+
+// ── Date helpers ──────────────────────────────────────
+function parseDate(s){
+  if(!s||['N/A','n/a',''].includes(String(s).trim()))return '';
+  s=String(s).trim();
+  // SharePoint returns ISO dates like 2025-07-10T00:00:00Z
+  if(/^\d{4}-\d{2}-\d{2}/.test(s))return s.slice(0,10);
+  const d=new Date(s);if(!isNaN(d))return d.toISOString().slice(0,10);
+  return '';
+}
+function toSPDate(s){return s?s+'T00:00:00Z':null;}
+function daysBetween(a,b){if(!a||!b)return null;return Math.round((new Date(b)-new Date(a))/86400000);}
+function totalDays(r){return daysBetween(r.dates[0],r.dates[6]);}
+function currentStage(r){for(let i=6;i>=0;i--){if(r.dates[i])return i;}return -1;}
+function isGraySegment(r,si){return !r.dates[si]||!r.dates[si+1];}
+function segments(r){
+  const segs=Array(6).fill(0);
+  const known=r.dates.map((d,i)=>d?i:-1).filter(i=>i>=0);
+  if(known.length<2)return segs;
+  for(let k=0;k<known.length-1;k++){
+    const a=known[k],b=known[k+1];
+    const d=daysBetween(r.dates[a],r.dates[b]);
+    if(d!==null)segs[a]=d;
+  }
+  return segs;
+}
+function avgDaysForType(type){
+  const done=rows.filter(r=>r.type===type&&r.dates[0]&&r.dates[6]);
+  if(!done.length)return null;
+  return Math.round(done.reduce((s,r)=>s+totalDays(r),0)/done.length);
+}
+
+// ── SharePoint CRUD ───────────────────────────────────
+function rowToSP(r){
+  const item={[FIELDS.reqId]:r.reqId,[FIELDS.position]:r.position,[FIELDS.manager]:r.manager,[FIELDS.type]:r.type,[FIELDS.candidate]:r.candidate||'(no name)'};
+  FIELDS.dates.forEach((f,i)=>{item[f]=toSPDate(r.dates[i]);});
+  return item;
+}
+
+function spToRow(item){
+  return {
+    id:item.Id,
+    spId:item.Id,
+    reqId:item[FIELDS.reqId]||'',
+    position:item[FIELDS.position]||'',
+    manager:item[FIELDS.manager]||'',
+    type:item[FIELDS.type]||'FTE',
+    dates:FIELDS.dates.map(f=>parseDate(item[f]||'')),
+    candidate:item[FIELDS.candidate]||''
+  };
+}
+
+async function getDigest(){
+  const res=await fetch(`${SP_SITE}/_api/contextinfo`,{method:'POST',headers:SP_HEADERS});
+  const json=await res.json();
+  return json.FormDigestValue;
+}
+
+async function loadFromSP(){
+  setSyncStatus('saving','Loading…');
+  try{
+    const res=await fetch(`${SP_API}?$orderby=${FIELDS.rowOrder}&$top=500`,{headers:SP_HEADERS});
+    if(!res.ok)throw new Error(`HTTP ${res.status}`);
+    const json=await res.json();
+    rows=(json.value||[]).map(spToRow);
+    setSyncStatus('saved','Connected ✓');
+    renderAll();
+  }catch(err){
+    setSyncStatus('error','Load failed');
+    showToast('Could not load from SharePoint: '+err.message,true);
+    document.getElementById('tbody').innerHTML=`<tr><td colspan="14" class="loading" style="color:#c0392b">Failed to load. Are you logged into SharePoint? (${err.message})</td></tr>`;
+  }
+}
+
+async function createInSP(r){
+  const digest=await getDigest();
+  const res=await fetch(SP_API,{
+    method:'POST',
+    headers:{...SP_HEADERS,'X-RequestDigest':digest},
+    body:JSON.stringify(rowToSP(r))
+  });
+  if(!res.ok)throw new Error(`Create failed: ${res.status}`);
+  const json=await res.json();
+  return json.Id;
+}
+
+async function updateInSP(r){
+  const digest=await getDigest();
+  const res=await fetch(`${SP_API}(${r.spId})`,{
+    method:'MERGE',
+    headers:{...SP_HEADERS,'X-RequestDigest':digest,'IF-MATCH':'*','X-HTTP-Method':'MERGE'},
+    body:JSON.stringify(rowToSP(r))
+  });
+  if(!res.ok)throw new Error(`Update failed: ${res.status}`);
+}
+
+async function deleteFromSP(spId){
+
+  const digest=await getDigest();
+  const res=await fetch(`${SP_API}(${spId})`,{
+    method:'DELETE',
+    headers:{...SP_HEADERS,'X-RequestDigest':digest,'IF-MATCH':'*'}
+  });
+  if(!res.ok)throw new Error(`Delete failed: ${res.status}`);
+}
+
+function scheduleSave(r){
+  clearTimeout(saveTimer);
+  setSyncStatus('saving','Saving…');
+  saveTimer=setTimeout(async()=>{
+    try{
+      if(r.spId){await updateInSP(r);}
+      else{r.spId=await createInSP(r);r.id=r.spId;}
+      setSyncStatus('saved','Saved ✓');
+    }catch(err){
+      setSyncStatus('error','Save failed');
+      showToast('Save failed: '+err.message,true);
+    }
+  },1200);
+}
+
+// ── Import ────────────────────────────────────────────
+function importFile(e){
+  const file=e.target.files[0];if(!file)return;
+  const reader=new FileReader();
+  reader.onload=async ev=>{
+    const text=ev.target.result;
+    const lines=text.split(/\r?\n/).filter(l=>l.trim());
+    if(!lines.length){showToast('File is empty',true);return;}
+    const delim=lines[0].includes('\t')?'\t':',';
+    const firstCells=lines[0].split(delim);
+    const looksLikeHeader=isNaN(Date.parse(firstCells[4]||'x'))&&!/^\d{4}/.test((firstCells[4]||'').trim());
+    const dataLines=looksLikeHeader?lines.slice(1):lines;
+    if(!dataLines.length){showToast('No data rows found',true);return;}
+    let imported=0,skipped=0;
+    setSyncStatus('saving','Importing…');
+    for(const line of dataLines){
+      const c=line.split(delim).map(s=>s.trim().replace(/^"|"$/g,''));
+      if(c.length<4){skipped++;continue;}
+      const rawType=c[3]||'FTE';
+      const type=ROLE_TYPES.find(t=>t.toLowerCase()===rawType.toLowerCase())||'FTE';
+      const r={
+        id:null,spId:null,
+        reqId:c[0]||'',position:c[1]||'Unknown',manager:c[2]||'',type,
+        dates:[parseDate(c[4]),parseDate(c[5]),parseDate(c[6]),parseDate(c[7]),
+               parseDate(c[8]),parseDate(c[9]),parseDate(c[10])],
+        candidate:c[11]||'',order:rows.length+imported+1
+      };
+      try{
+        r.spId=await createInSP(r);r.id=r.spId;
+        rows.push(r);imported++;
+      }catch(err){skipped++;showToast('Row failed: '+err.message,true);}
+    }
+    e.target.value='';renderAll();
+    setSyncStatus('saved','Saved ✓');
+    showToast(`Imported ${imported} row${imported!==1?'s':''}${skipped?' ('+skipped+' skipped)':''}`,false);
+  };
+  reader.readAsText(file);
+}
+
+// ── Chart plugin ──────────────────────────────────────
+const avgLabelPlugin={
+  id:'avgLabel',
+  afterDatasetsDraw(chart,_,opts){
+    const{ctx,scales:{x,y}}=chart;
+    (opts.headers||[]).forEach(h=>{
+      if(h.avg===null)return;
+      const yPos=y.getPixelForValue(h.index);
+      ctx.save();ctx.font='bold 10px -apple-system,sans-serif';ctx.fillStyle=h.color;
+      ctx.textAlign='left';ctx.textBaseline='middle';
+      ctx.fillText(`avg ${h.avg}d`,x.getPixelForValue(x.max)+8,yPos);
+      ctx.restore();
+    });
+  }
+};
+Chart.register(avgLabelPlugin);
+
+// ── Render ────────────────────────────────────────────
+function renderMetrics(){
+  const completed=rows.filter(r=>r.dates[6]);
+  const allDays=completed.map(r=>totalDays(r)).filter(d=>d!==null);
+  const avg=allDays.length?Math.round(allDays.reduce((a,b)=>a+b,0)/allDays.length):null;
+  const inProgress=rows.filter(r=>!r.dates[6]&&r.dates[0]);
+  document.getElementById('metrics').innerHTML=`
+    <div class="metric"><div class="metric-label">Open positions</div><div class="metric-value">${rows.length}</div><div class="metric-sub">total tracked</div></div>
+    <div class="metric"><div class="metric-label">Completed hires</div><div class="metric-value">${completed.length}</div><div class="metric-sub">fully onboarded</div></div>
+    <div class="metric"><div class="metric-label">In progress</div><div class="metric-value">${inProgress.length}</div><div class="metric-sub">active searches</div></div>
+    <div class="metric"><div class="metric-label">Avg time to hire</div><div class="metric-value">${avg!==null?avg+'d':'—'}</div><div class="metric-sub">need → onboard</div></div>
+    <div class="metric"><div class="metric-label">Fastest hire</div><div class="metric-value">${allDays.length?Math.min(...allDays)+'d':'—'}</div><div class="metric-sub">completed roles</div></div>
+  `;
+}
+
+function renderPipeline(){
+  const stageCounts=Array(7).fill(0);
+  rows.forEach(r=>{const s=currentStage(r);if(s>=0)stageCounts[s]++;});
+  const max=Math.max(...stageCounts,1);
+  document.getElementById('pipeline').innerHTML=MS_LABELS.map((lbl,i)=>`
+    <div style="margin-bottom:8px">
+      <div style="display:flex;justify-content:space-between;font-size:11px;color:#666;margin-bottom:3px">
+        <span>${lbl}</span><span style="font-weight:500;color:#1a1a1a">${stageCounts[i]}</span>
+      </div>
+      <div style="height:8px;background:#ebebeb;border-radius:4px;overflow:hidden">
+        <div style="height:100%;width:${Math.round((stageCounts[i]/max)*100)}%;background:${STAGE_COLORS[i]};border-radius:4px"></div>
+      </div>
+    </div>`).join('');
+}
+
+function renderChart(){
+  document.getElementById('bar-legend').innerHTML=
+    SEG_LABELS.map((l,i)=>`<span><i style="background:${SEG_COLORS[i]}"></i>${l}</span>`).join('')+
+    `<span><i style="background:${FULL_BAR_COLOR}"></i>Unknown span (milestone gap)</span>`;
+  if(barChart){barChart.destroy();barChart=null;}
+  const wrap=document.getElementById('chart-wrap');
+  const oldCanvas=document.getElementById('chartBar');
+  const newCanvas=document.createElement('canvas');
+  newCanvas.id='chartBar';oldCanvas.parentNode.replaceChild(newCanvas,oldCanvas);
+  const ctx=newCanvas.getContext('2d');
+  const labels=[],segsData=SEG_LABELS.map(()=>[]),isHeader=[],isSpacer=[],headerMeta=[],rowMeta=[];
+
+  ROLE_TYPES.forEach((type,ti)=>{
+    const group=rows.filter(r=>r.type===type);
+    if(!group.length)return;
+    const hdrIndex=labels.length;
+    headerMeta.push({index:hdrIndex,avg:avgDaysForType(type),color:TYPE_HDR_COLORS[ti]});
+    labels.push(type);SEG_LABELS.forEach((_,si)=>segsData[si].push(null));
+    isHeader.push(true);isSpacer.push(false);rowMeta.push(null);
+    group.forEach(r=>{
+      const lbl=r.candidate?r.candidate:(r.position.length>22?r.position.slice(0,21)+'…':r.position);
+      labels.push(lbl);
+      const segs=segments(r);
+      SEG_LABELS.forEach((_,si)=>segsData[si].push(segs[si]??0));
+      isHeader.push(false);isSpacer.push(false);rowMeta.push(r);
+    });
+    if(ti<ROLE_TYPES.length-1){
+      labels.push('');SEG_LABELS.forEach((_,si)=>segsData[si].push(null));
+      isHeader.push(false);isSpacer.push(true);rowMeta.push(null);
+    }
+  });
+
+  if(!labels.length){wrap.style.height='60px';ctx.fillStyle='#888';ctx.font='13px sans-serif';ctx.textAlign='center';ctx.fillText('No positions yet',100,30);return;}
+  wrap.style.height=Math.max(labels.length*38+40,80)+'px';
+
+  barChart=new Chart(ctx,{
+    type:'bar',
+    data:{
+      labels,
+      datasets:SEG_LABELS.map((lbl,si)=>({
+        label:lbl,data:segsData[si],
+        backgroundColor:segsData[si].map((_,ri)=>{
+          if(isHeader[ri])return 'transparent';
+          const r=rowMeta[ri];if(!r)return SEG_COLORS[si];
+          return isGraySegment(r,si)?FULL_BAR_COLOR:SEG_COLORS[si];
+        }),
+        borderRadius:2,borderSkipped:false,
+      }))
+    },
+    options:{
+      indexAxis:'y',responsive:true,maintainAspectRatio:false,layout:{padding:{right:70}},
+      plugins:{
+        legend:{display:false},avgLabel:{headers:headerMeta},
+        tooltip:{callbacks:{
+          label:c=>{
+            if(isHeader[c.dataIndex]||isSpacer[c.dataIndex])return null;
+            const r=rowMeta[c.dataIndex];
+            if(!r||c.parsed.x<=0)return null;
+            if(isGraySegment(r,c.datasetIndex))return `Unknown span: ${c.parsed.x}d`;
+            return `${c.dataset.label}: ${c.parsed.x}d`;
+          },
+          title:items=>{if(isHeader[items[0].dataIndex])return null;return items[0].label;}
+        }}
+      },
+      scales:{
+        x:{stacked:true,ticks:{callback:v=>v+'d',font:{size:11}},grid:{color:'rgba(0,0,0,.06)'},title:{display:true,text:'days elapsed',font:{size:11}}},
+        y:{stacked:true,ticks:{font:c=>isHeader[c.index]?{size:11,weight:'bold'}:{size:10},color:c=>isHeader[c.index]?TYPE_HDR_COLORS[ROLE_TYPES.indexOf(labels[c.index])]:'#666'},grid:{display:false},afterFit(s){s.width=160;}}
+      }
+    }
+  });
+}
+
+function updateDaysBadge(id){
+  const r=rows.find(r=>r.id===id);if(!r)return;
+  const cell=document.querySelector(`[data-days="${id}"]`);if(!cell)return;
+  const d=totalDays(r);const bc=d===null?'badge-gray':d<60?'badge-green':'badge-amber';
+  cell.innerHTML=`<span class="badge ${bc}">${d!==null?d+'d':'—'}</span>`;
+}
+
+function typeOptions(selected){return ROLE_TYPES.map(t=>`<option value="${t}"${t===selected?' selected':''}>${t}</option>`).join('');}
+
+function renderTable(){
+  const tbody=document.getElementById('tbody');tbody.innerHTML='';
+  if(!rows.length){tbody.innerHTML='<tr><td colspan="14" class="loading">No rows yet. Use Import or + Add position.</td></tr>';return;}
+  rows.forEach(r=>{
+    const d=totalDays(r);const bc=d===null?'badge-gray':d<60?'badge-green':'badge-amber';
+    const tr=document.createElement('tr');tr.dataset.id=r.id;
+    tr.innerHTML=`
+      <td><input class="cell-input" value="${r.reqId}" onblur="updateField(${r.id},'reqId',this.value)"/></td>
+      <td><input class="cell-input" value="${r.position}" onblur="updateField(${r.id},'position',this.value)"/></td>
+      <td><input class="cell-input" value="${r.manager}" onblur="updateField(${r.id},'manager',this.value)"/></td>
+      <td><select class="type-select" onchange="updateField(${r.id},'type',this.value)">${typeOptions(r.type)}</select></td>
+      ${r.dates.map((dt,i)=>`<td><input type="date" class="date-input" value="${dt}" onchange="updateDate(${r.id},${i},this.value)"/></td>`).join('')}
+      <td style="text-align:center" data-days="${r.id}"><span class="badge ${bc}">${d!==null?d+'d':'—'}</span></td>
+      <td><input class="cell-input" value="${r.candidate||''}" onblur="updateField(${r.id},'candidate',this.value)" placeholder="—"/></td>
+      <td><button class="del-btn" onclick="deleteRow(${r.id})">✕</button></td>`;
+    tbody.appendChild(tr);
+  });
+}
+
+function renderSummary(){renderMetrics();renderPipeline();renderChart();}
+function renderAll(){renderSummary();renderTable();}
+
+function updateField(id,field,val){
+  const r=rows.find(r=>r.id===id);if(!r)return;
+  r[field]=val;renderSummary();scheduleSave(r);
+}
+function updateDate(id,idx,val){
+  const r=rows.find(r=>r.id===id);if(!r)return;
+  r.dates[idx]=val;updateDaysBadge(id);renderSummary();scheduleSave(r);
+}
+async function addRow(){
+  const r={id:null,spId:null,reqId:'',position:'New position',manager:'',type:'FTE',dates:Array(7).fill(''),candidate:''};
+  setSyncStatus('saving','Saving…');
+  try{
+    r.spId=await createInSP(r);r.id=r.spId;
+    rows.push(r);renderAll();
+    setSyncStatus('saved','Saved ✓');
+  }catch(err){
+    setSyncStatus('error','Save failed');
+    showToast('Could not add row: '+err.message,true);
+  }
+}
+async function deleteRow(id){
+  const r=rows.find(r=>r.id===id);if(!r)return;
+  if(r.spId){
+    setSyncStatus('saving','Deleting…');
+    try{await deleteFromSP(r.spId);setSyncStatus('saved','Saved ✓');}
+    catch(err){setSyncStatus('error','Delete failed');showToast('Delete failed: '+err.message,true);return;}
+  }
+  rows=rows.filter(r=>r.id!==id);renderAll();
+}
+
+// ── Boot ──────────────────────────────────────────────
+loadFromSP();
+</script>
+</body>
+</html>
